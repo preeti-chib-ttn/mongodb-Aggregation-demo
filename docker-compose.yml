@@ -1,0 +1,59 @@
+# MongoDB JVM OOM Demo — Docker Compose
+#
+# BEFORE SESSION (once):  ./setup.sh     loads data into volume (~3–5 min)
+# AT SESSION (instant):   ./start.sh     then  ./demo.sh oom
+#
+# MongoDB uses port 27018 on your machine (avoids clash with local Mongo on 27017).
+# Data persists in the "mongo_demo_data" Docker volume across restarts.
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: mongo-jvm-demo-db
+    ports:
+      - "27018:27017"   # 27018 on your laptop (avoids clash with local MongoDB on 27017)
+    volumes:
+      - mongo_demo_data:/data/db
+      - ./scripts:/scripts:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+
+  # Only runs when you call: docker compose --profile seed run --rm seed
+  seed:
+    image: mongo:7
+    profiles: ["seed"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - ./scripts/seed-invoices.mongosh.js:/seed.mongosh.js:ro
+    environment:
+      TOTAL: "100000"
+      DROP: "0"
+      SKIP_IF_EXISTS: "1"
+    entrypoint:
+      - mongosh
+      - mongodb://mongo:27017/mongo_demo
+      - --file
+      - /seed.mongosh.js
+    restart: "no"
+
+  app:
+    build: .
+    container_name: mongo-jvm-demo-app
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATA_MONGODB_URI: mongodb://mongo:27017/mongo_demo
+      JAVA_OPTS: "-Xms128m -Xmx256m"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  mongo_demo_data:

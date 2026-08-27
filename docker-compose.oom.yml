@@ -1,0 +1,5 @@
+# Tiny JVM heap — used only for the OOM demo
+services:
+  app:
+    environment:
+      JAVA_OPTS: "-Xms32m -Xmx64m"
